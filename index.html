@@ -1,0 +1,142 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>dc.js - Filtering Example</title>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" type="text/css" href="css/dc.css"/>
+</head>
+<body>
+
+<div id="chart-ring-year"></div>
+<div id="chart-hist-spend"></div>
+<div id="chart-row-spenders"></div>
+<div id="chart-row-date-spend"></div>
+<div id="chart-line-day-spend"></div>
+<div id="dc-data-table"></div>
+<script type="text/javascript" src="js/d3.js"></script>
+<script type="text/javascript" src="js/crossfilter.js"></script>
+<script type="text/javascript" src="js/dc.js"></script>
+<script type="text/javascript">
+
+var yearRingChart   = dc.pieChart("#chart-ring-year"),
+    spendHistChart  = dc.barChart("#chart-hist-spend"),
+    spenderRowChart = dc.rowChart("#chart-row-spenders"),
+    monthlyRevenueChart  = dc.barChart("#chart-row-date-spend"),
+    dailyRevenueChart  = dc.lineChart("#chart-line-day-spend"),
+    transactionsDataTable = dc.dataTable('#dc-data-table');
+d3.csv("data.csv", function(error, spendData) {/* do stuff */
+
+// normalize/parse data
+    var parser = d3.time.format("%Y-%m-%d");
+    var numberFormat = d3.format('.2f');
+    var dateFormat = d3.time.format('%m/%d/%Y');
+spendData.forEach(function (d) {
+        d.date = parser.parse(d.date);
+    });
+    spendData.forEach(function(d) {
+        d.Spent = d.total_usd.match(/\d+/);
+    });
+    var brands ={'apple':0,'itunes':1,'uber':2};
+    // set crossfilter
+    
+    var ndx = crossfilter(spendData),
+        yearDim  = ndx.dimension(function(d) {return +d.year;}),
+        spendDim = ndx.dimension(function(d) {return Math.floor(d.total_usd/10);}),
+        nameDim  = ndx.dimension(function(d) {return d.brand_name;}),
+        dateDim = ndx.dimension(function(d) {return d.date;}),
+        monthDim = ndx.dimension(function(d) {return d.date.getMonth();}),
+
+        spendPerYear = yearDim.group().reduceSum(function(d) {return Math.abs(+d.total_usd);}),
+        spendPerMonth = monthDim.group().reduceSum(function(d) {
+            var d=  Math.abs(+d.total_usd);
+            return d;
+        }),
+        dailySpend = dateDim.group().reduceSum(function(d) {return Math.abs(+d.total_usd);}),
+        spendPerName = nameDim.group().reduceSum(function(d) {return Math.abs(+d.total_usd);}),
+        spendHist    = spendDim.group().reduceCount();
+
+    yearRingChart
+        .width(200).height(200)
+        .dimension(yearDim)
+        .group(spendPerYear)
+        .innerRadius(50);
+
+    spendHistChart
+        .width(300).height(200)
+        .dimension(spendDim)
+        .group(spendHist)
+        .x(d3.scale.linear().domain([0,10]))
+        .elasticY(true);
+
+    spendHistChart.xAxis().tickFormat(function(d) {return d*10}); // convert back to base unit
+    spendHistChart.yAxis().ticks(10);
+/************************************/
+    monthlyRevenueChart
+        .width(1000).height(200)
+        .x(d3.scale.linear().domain([1,12]))
+        .elasticY(true)
+        .dimension(monthDim)
+        .group(spendPerMonth)
+        monthlyRevenueChart.xAxis().tickFormat(function(d) {return d}); // convert back to base unit
+        monthlyRevenueChart.xAxis().ticks(12);
+        
+/***********************************/
+    spenderRowChart
+        .width(0).height(200)
+        .dimension(nameDim)
+        .group(spendPerName)
+        .elasticX(true);
+    spenderRowChart.xAxis().tickFormat(function(d) {return d}); // convert back to base unit
+    spenderRowChart.xAxis().ticks(2);
+/*****************************************/
+dailyRevenueChart
+    .renderArea(true)
+    .width(990)
+    .height(200)
+    .transitionDuration(1000)
+    .margins({top: 30, right: 50, bottom: 25, left: 40})
+    .dimension(nameDim)
+    .group(dailySpend)
+    .mouseZoomable(true)
+    .x(d3.time.scale().domain([new Date(2014, 0, 1), new Date(2015, 11, 31)]))
+    .round(d3.time.month.round)
+    .xUnits(d3.time.months)
+    .elasticY(true)
+    .renderHorizontalGridLines(true)
+/***************************************************/
+    transactionsDataTable.dimension(dateDim)
+    .group(function (d) {
+             
+            return d.brand_name;
+        })
+    .size(60)
+    .columns(
+        [
+            {
+                label:'date',
+                format: function(d){
+                    return dateFormat(d.date) +'       -  ';
+                }
+            },
+        'brand_name',
+        
+        {  label : 'revenue',
+            format: function(d) {
+                return numberFormat(d.total_usd);
+            }
+        }
+        ])
+    .sortBy(function (d) {
+        return d.date;
+    })
+    .on('renderlet', function (table) {
+            table.selectAll('.dc-table-group').classed('info', true);
+        });
+    dc.renderAll();
+})
+
+</script>
+
+</body>
+</html>
